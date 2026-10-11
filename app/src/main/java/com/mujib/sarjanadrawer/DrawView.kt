@@ -23,7 +23,7 @@ class DrawView(ctx: Context) : View(ctx) {
     private val redoStack = ArrayList<Command>()
 
     var tool = Tool.PEN
-    var color: Int = 0xFFFF3B30.toInt()
+    var color: Int = 0xFFFFFFFF.toInt()
     var penWidth: Float = ctx.dpf(5f)
     var arrowWidth: Float = ctx.dpf(5f)
     var heroScale: Float = 1f
@@ -146,7 +146,6 @@ class DrawView(ctx: Context) : View(ctx) {
             Tool.PEN -> {
                 push(AddCmd(cur))
                 Stats.inc(context, Stats.STROKES)
-                selected = cur
             }
             Tool.ARROW -> {
                 val a = cur as ArrowItem
@@ -155,7 +154,6 @@ class DrawView(ctx: Context) : View(ctx) {
                 } else {
                     push(AddCmd(a))
                     Stats.inc(context, Stats.STROKES)
-                    selected = a
                 }
             }
             Tool.SELECT -> {
@@ -176,7 +174,7 @@ class DrawView(ctx: Context) : View(ctx) {
 
     fun addHero(hero: Hero) {
         val bmp = HeroCatalog.load(context, hero)
-        val item = HeroItem(hero, bmp, width / 2f, height / 2f, context.dpf(140f), heroScale)
+        val item = HeroItem(hero, bmp, width / 2f, height / 2f, context.dpf(120f), heroScale)
         items.add(item)
         push(AddCmd(item))
         Stats.inc(context, Stats.HEROES)
@@ -209,11 +207,7 @@ class DrawView(ctx: Context) : View(ctx) {
         val s = selected
         if (s != null) {
             s.size = toSize(s, p)
-            when (s) {
-                is StrokeItem -> penWidth = s.size
-                is ArrowItem -> arrowWidth = s.size
-                is HeroItem -> heroScale = s.size
-            }
+            if (s is HeroItem) heroScale = s.size
         } else {
             penWidth = toSize(null, p)
             arrowWidth = penWidth

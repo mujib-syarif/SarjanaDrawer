@@ -165,9 +165,12 @@ class OverlayService : Service() {
     }
 
     private fun showBubble() {
-        val size = dp(56f)
+        // Logo tampil 28dp; jendela 44dp supaya area sentuh tetap nyaman.
+        val size = dp(44f)
+        val pad = dp(8f)
         val iv = ImageView(this)
-        iv.setImageBitmap(HeroCatalog.bubbleBitmap(this, size))
+        iv.setPadding(pad, pad, pad, pad)
+        iv.setImageBitmap(HeroCatalog.bubbleBitmap(this, size - 2 * pad))
         iv.alpha = 0.95f
         val (sw, sh) = realSize()
         val lp = LayoutParams(
@@ -177,7 +180,7 @@ class OverlayService : Service() {
             PixelFormat.TRANSLUCENT
         )
         lp.gravity = Gravity.TOP or Gravity.START
-        lp.x = sw - size - dp(4f)
+        lp.x = sw - size
         lp.y = sh / 3
 
         iv.setOnTouchListener(object : View.OnTouchListener {
@@ -220,7 +223,7 @@ class OverlayService : Service() {
 
     private fun snapBubble(v: View, lp: LayoutParams, size: Int) {
         val (sw, _) = realSize()
-        val target = if (lp.x + size / 2 < sw / 2) dp(4f) else sw - size - dp(4f)
+        val target = if (lp.x + size / 2 < sw / 2) 0 else sw - size
         val anim = ValueAnimator.ofInt(lp.x, target)
         anim.duration = 180
         anim.addUpdateListener {

@@ -6,11 +6,11 @@ Aplikasi Android untuk mencoret layar di atas aplikasi apa pun, mirip fitur kuas
 
 - Bubble melayang memakai logo sendiri (`mujib_logo.png`), bisa digeser dan menempel ke tepi layar
 - Pena bebas, panah (ada kepala panah di ujung garis), dan 6 hero yang bisa ditaruh di layar
-- Slider ukuran: perbesar atau kecilkan coretan, panah, dan hero
+- Slider ukuran selalu tampil di toolbar. Di mode pena atau panah, slider mengatur ketebalan garis berikutnya. Di mode pilih, slider memperbesar atau mengecilkan coretan, panah, atau hero yang dipilih
 - Alat pilih: sentuh objek lalu geser untuk memindahkannya
-- Pilihan warna, undo, redo, hapus semua
+- Warna cepat putih (default) dan kuning di samping slider, plus palet warna lengkap, undo, redo, hapus semua
 - Screenshot hasil coretan, tersimpan di Galeri (`Pictures/SarjanaDrawer`)
-- Toolbar 2 baris yang bisa digeser ke mana saja lewat garis kecil di bagian atasnya
+- Toolbar 3 baris yang ringkas, bisa digeser ke mana saja dengan menyeret bagian toolbar mana pun (selain slider)
 - Tampilan bergaya iOS: monokrom, transparan seperti kaca, kartu modular
 
 ## Letak file logo dan hero (taruh di GitHub)
@@ -20,18 +20,22 @@ Taruh file PNG di folder `assets`:
 ```
 app/src/main/assets/
 ├── mujib_logo.png
+├── icons/
+│   └── aq_icon.png                                  (ikon tombol hero di toolbar)
 └── heroes/
-    ├── cosmiccurse_panicportal_bk_pose01_shadow.png       (Barbarian King)
-    ├── cosmiccurse_panicportal_aq_pose02_shadow.png       (Archer Queen)
-    ├── cosmiccurse_panicportal_mp_pose02_no_shadows.png   (Minion Prince)
-    ├── cosmiccurse_panicportal_gw_pose01_shadows.png      (Grand Warden)
-    ├── cosmiccurse_panicportal_rc_pose03_shadows.png      (Royal Champion)
-    └── cosmiccurse_panicportal_dd_pose01_no_shadows.png   (Dragon Duke)
+    ├── Hero_Skin_BK_Lunar_King_2_shadow.png         (Barbarian King)
+    ├── Hero_Skin_AQ_Lunar_Queen_1.png               (Archer Queen)
+    ├── league_prince_pose02_noshadows.png           (Minion Prince)
+    ├── Hero_Skin_GW_Warrior_Warden_1_grass.png      (Grand Warden)
+    ├── RoyalChampion_LNY_03_4k.png                  (Royal Champion)
+    └── DragonDuke_f012_4k.png                       (Dragon Duke)
 ```
 
 Cara upload lewat HP: buka repo di GitHub, masuk ke folder tujuan, tekan **Add file > Upload files**, pilih PNG-nya, lalu **Commit changes**.
 
-Kalau nama file hero sedikit berbeda, aplikasi tetap mencari file di `heroes/` yang memuat kode hero (`_bk_`, `_aq_`, `_mp_`, `_gw_`, `_rc_`, `_dd_`). Kalau file belum ada, hero tampil sebagai kotak berinisial dan aplikasi tidak error.
+Kalau nama file hero sedikit berbeda, aplikasi tetap mencari file di `heroes/` yang memuat kata kunci hero (`_BK_`, `_AQ_`, `league_prince`, `_GW_`, `RoyalChampion`, `DragonDuke`). Kalau file belum ada, hero tampil sebagai kotak berinisial dan aplikasi tidak error.
+
+Gambar hero sudah dipangkas pas ke batas karakternya (tanpa area transparan berlebih), jadi tampil lebih besar dan jelas di toolbar.
 
 Halaman utama aplikasi menunjukkan berapa gambar hero dan logo yang sudah terbaca.
 
@@ -52,7 +56,7 @@ Kalau pakai Android Studio: buka folder proyek ini, lalu **Build > Build APK(s)*
 1. Buka aplikasi, tekan **Aktifkan bubble**.
 2. Beri izin "Tampilkan di atas aplikasi lain", izin notifikasi, dan izin rekam layar (pilih **Seluruh layar** jika ditanya).
 3. Sentuh bubble untuk masuk mode coret. Bubble disembunyikan selama mode coret.
-4. Toolbar baris 1: pena, panah, pilih/geser, hero, warna, ukuran. Baris 2: undo, redo, screenshot, hapus semua, tutup.
+4. Toolbar baris 1: warna cepat putih dan kuning, slider ukuran. Baris 2: pena, panah, pilih/geser, hero (ikon Archer Queen), palet warna. Baris 3: undo, redo, screenshot, hapus semua, tutup.
 5. Tombol tutup keluar dari mode coret (coretan dihapus) dan bubble muncul lagi. Matikan bubble dari aplikasi atau dari tombol **Matikan** di notifikasi.
 
 ## Catatan

@@ -10,24 +10,25 @@ import android.graphics.Paint
 import android.graphics.Shader
 import android.graphics.Typeface
 
-data class Hero(val code: String, val name: String, val fileName: String)
+data class Hero(val code: String, val name: String, val fileName: String, val keys: List<String>)
 
 object HeroCatalog {
     const val HERO_DIR = "heroes"
     const val LOGO = "mujib_logo.png"
+    const val AQ_ICON = "icons/aq_icon.png"
 
     val heroes = listOf(
-        Hero("bk", "Barbarian King", "cosmiccurse_panicportal_bk_pose01_shadow.png"),
-        Hero("aq", "Archer Queen", "cosmiccurse_panicportal_aq_pose02_shadow.png"),
-        Hero("mp", "Minion Prince", "cosmiccurse_panicportal_mp_pose02_no_shadows.png"),
-        Hero("gw", "Grand Warden", "cosmiccurse_panicportal_gw_pose01_shadows.png"),
-        Hero("rc", "Royal Champion", "cosmiccurse_panicportal_rc_pose03_shadows.png"),
-        Hero("dd", "Dragon Duke", "cosmiccurse_panicportal_dd_pose01_no_shadows.png")
+        Hero("bk", "Barbarian King", "Hero_Skin_BK_Lunar_King_2_shadow.png", listOf("_BK_")),
+        Hero("aq", "Archer Queen", "Hero_Skin_AQ_Lunar_Queen_1.png", listOf("_AQ_")),
+        Hero("mp", "Minion Prince", "league_prince_pose02_noshadows.png", listOf("league_prince", "MinionPrince")),
+        Hero("gw", "Grand Warden", "Hero_Skin_GW_Warrior_Warden_1_grass.png", listOf("_GW_")),
+        Hero("rc", "Royal Champion", "RoyalChampion_LNY_03_4k.png", listOf("RoyalChampion")),
+        Hero("dd", "Dragon Duke", "DragonDuke_f012_4k.png", listOf("DragonDuke"))
     )
 
     private val cache = HashMap<String, Bitmap>()
 
-    /** Cari file hero di assets/heroes. Nama persis dipakai dulu, kalau tidak ada cari yang memuat _kode_. */
+    /** Cari file hero di assets/heroes. Nama persis dipakai dulu, kalau tidak ada cari yang memuat kata kunci hero. */
     fun resolveAsset(ctx: Context, hero: Hero): String? {
         val list = try {
             ctx.applicationContext.assets.list(HERO_DIR)
@@ -35,9 +36,16 @@ object HeroCatalog {
             null
         } ?: return null
         if (list.contains(hero.fileName)) return hero.fileName
-        return list.firstOrNull {
-            it.endsWith(".png", ignoreCase = true) && it.contains("_${hero.code}_", ignoreCase = true)
+        return list.firstOrNull { f ->
+            f.endsWith(".png", ignoreCase = true) && hero.keys.any { f.contains(it, ignoreCase = true) }
         }
+    }
+
+    /** Ikon kepala Archer Queen untuk tombol hero di toolbar. Null kalau file ikon tidak ada. */
+    fun loadAqIcon(ctx: Context): Bitmap? = try {
+        ctx.applicationContext.assets.open(AQ_ICON).use { BitmapFactory.decodeStream(it) }
+    } catch (e: Exception) {
+        null
     }
 
     fun isAvailable(ctx: Context, hero: Hero): Boolean = resolveAsset(ctx, hero) != null
@@ -66,6 +74,15 @@ object HeroCatalog {
         false
     }
 
+    /** Perkecil bertahap (dibagi dua) supaya logo kecil tetap halus, tidak bergerigi. */
+    private fun stepDown(src: Bitmap, target: Int): Bitmap {
+        var b = src
+        while (b.width / 2 >= target) {
+            b = Bitmap.createScaledBitmap(b, b.width / 2, b.height / 2, true)
+        }
+        return Bitmap.createScaledBitmap(b, target, target, true)
+    }
+
     /** Bitmap bulat untuk bubble. Kalau logo belum ada, dipakai huruf M di lingkaran hitam. */
     fun bubbleBitmap(ctx: Context, size: Int): Bitmap {
         val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -88,7 +105,7 @@ object HeroCatalog {
             val off = (size - inner) / 2f
             val side = minOf(logo.width, logo.height)
             val crop = Bitmap.createBitmap(logo, (logo.width - side) / 2, (logo.height - side) / 2, side, side)
-            val scaled = Bitmap.createScaledBitmap(crop, inner, inner, true)
+            val scaled = stepDown(crop, inner)
             val p2 = Paint(Paint.ANTI_ALIAS_FLAG)
             p2.shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
             c.save()

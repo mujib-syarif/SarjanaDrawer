@@ -7,14 +7,21 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
-import kotlin.math.roundToInt
+import kotlin.math.hypot
 
-/** Toolbar 2 baris bergaya iOS monokrom, bisa digeser lewat pegangan di bagian atas. */
+/**
+ * Toolbar 3 baris bergaya iOS monokrom:
+ *  baris 1: warna cepat (putih, kuning) + slider ukuran
+ *  baris 2: pena, panah, pilih, hero (ikon Archer Queen), warna
+ *  baris 3: undo, redo, screenshot, hapus semua, tutup
+ * Digeser dengan menyeret bagian toolbar mana pun (selain slider).
+ */
 class ToolbarView(
     ctx: Context,
     private val draw: DrawView,
@@ -23,29 +30,37 @@ class ToolbarView(
     private val onMove: (Float, Float) -> Unit
 ) : LinearLayout(ctx) {
 
-    private enum class Panel { NONE, HERO, COLOR, SIZE }
+    private enum class Panel { NONE, HERO, COLOR }
 
     private val ink = 0xFF1C1C1E.toInt()
     private var panel = Panel.NONE
+    private var sliding = false
+
+    private val btn = 28f
+    private val cols = 5
+    private val widthDp = btn * cols
 
     private fun d(v: Float): Int = context.dp(v)
 
     private val panelHost = FrameLayout(ctx)
-    private val sizeLabel = TextView(ctx)
     private val seek = SeekBar(ctx)
-    private val colorDots = ArrayList<Pair<Int, View>>()
+    private val swatches = ArrayList<Pair<Int, View>>()
 
-    private val colors = listOf(
-        0xFFFF3B30, 0xFFFF9500, 0xFFFFCC00, 0xFF34C759,
-        0xFF0A84FF, 0xFFAF52DE, 0xFF1C1C1E, 0xFFFFFFFF
+    private val white = 0xFFFFFFFF.toInt()
+    private val yellow = 0xFFFFCC00.toInt()
+
+    private val palette = listOf(
+        0xFFFFFFFF, 0xFFFFCC00, 0xFFFF9500, 0xFFFF3B30,
+        0xFF34C759, 0xFF0A84FF, 0xFFAF52DE, 0xFF1C1C1E
     ).map { it.toInt() }
+
+    private val aqIcon = HeroCatalog.loadAqIcon(ctx)
 
     private val btnPen = icon(R.drawable.ic_pen, "Pena") { setTool(DrawView.Tool.PEN) }
     private val btnArrow = icon(R.drawable.ic_arrow, "Panah") { setTool(DrawView.Tool.ARROW) }
     private val btnSelect = icon(R.drawable.ic_select, "Pilih dan geser") { setTool(DrawView.Tool.SELECT) }
     private val btnHero = icon(R.drawable.ic_hero, "Hero") { togglePanel(Panel.HERO) }
     private val btnColor = icon(R.drawable.ic_palette, "Warna") { togglePanel(Panel.COLOR) }
-    private val btnSize = icon(R.drawable.ic_tune, "Ukuran") { togglePanel(Panel.SIZE) }
 
     private val btnUndo = icon(R.drawable.ic_undo, "Undo") { draw.undo() }
     private val btnRedo = icon(R.drawable.ic_redo, "Redo") { draw.redo() }
@@ -53,48 +68,96 @@ class ToolbarView(
     private val btnTrash = icon(R.drawable.ic_trash, "Hapus semua") { draw.clearAll() }
     private val btnClose = icon(R.drawable.ic_close, "Tutup") { onClose() }
 
+    private val sliderRow = buildSliderRow()
     private val heroPanel = buildHeroPanel()
     private val colorPanel = buildColorPanel()
-    private val sizePanel = buildSizePanel()
+
+    // seret toolbar
+    private val slop = ViewConfiguration.get(ctx).scaledTouchSlop
+    private var downX = 0f
+    private var downY = 0f
+    private var lastX = 0f
+    private var lastY = 0f
+    private var dragging = false
+    private var ignoreDrag = false
 
     init {
         orientation = VERTICAL
-        setPadding(d(10f), d(4f), d(10f), d(10f))
-        background = roundRect(0xE8FFFFFF.toInt(), d(26f).toFloat(), 0x33000000, 1)
+        setPadding(d(8f), d(8f), d(8f), d(8f))
+        background = roundRect(0xEEFFFFFF.toInt(), d(20f).toFloat(), 0x33000000, 1)
 
-        val grip = FrameLayout(context)
-        grip.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, d(24f))
-        val bar = View(context)
-        bar.background = roundRect(0x55000000, d(3f).toFloat())
-        grip.addView(bar, FrameLayout.LayoutParams(d(40f), d(5f), Gravity.CENTER))
-        var lx = 0f
-        var ly = 0f
-        grip.setOnTouchListener { _, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    lx = e.rawX
-                    ly = e.rawY
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    onMove(e.rawX - lx, e.rawY - ly)
-                    lx = e.rawX
-                    ly = e.rawY
-                }
-            }
-            true
+        if (aqIcon != null) {
+            btnHero.setImageBitmap(aqIcon)
+            btnHero.clearColorFilter()
+            btnHero.scaleType = ImageView.ScaleType.CENTER_CROP
+            btnHero.setPadding(d(2f), d(2f), d(2f), d(2f))
+            btnHero.clipToOutline = true
         }
-        addView(grip)
-        addView(panelHost)
-        addView(row(btnPen, btnArrow, btnSelect, btnHero, btnColor, btnSize))
+
+        addView(sliderRow)
+        addView(panelHost, LayoutParams(d(widthDp), LayoutParams.WRAP_CONTENT))
+        addView(row(btnPen, btnArrow, btnSelect, btnHero, btnColor))
         addView(row(btnUndo, btnRedo, btnShot, btnTrash, btnClose))
 
         draw.onToolChanged = { refreshTools() }
         draw.onHistoryChanged = { refreshHistory() }
-        draw.onSelectionChanged = { if (panel == Panel.SIZE) syncSlider() }
+        draw.onSelectionChanged = { syncSlider() }
 
         refreshTools()
         refreshHistory()
         refreshColors()
+        syncSlider()
+    }
+
+    // ---------- seret toolbar ----------
+
+    private fun onSeek(e: MotionEvent): Boolean {
+        val loc = IntArray(2)
+        seek.getLocationOnScreen(loc)
+        val m = d(8f)
+        return e.rawX >= loc[0] - m && e.rawX <= loc[0] + seek.width + m &&
+            e.rawY >= loc[1] - m && e.rawY <= loc[1] + seek.height + m
+    }
+
+    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragging = false
+                downX = e.rawX
+                downY = e.rawY
+                lastX = downX
+                lastY = downY
+                ignoreDrag = onSeek(e)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!ignoreDrag && !dragging && hypot(e.rawX - downX, e.rawY - downY) > slop) {
+                    dragging = true
+                    lastX = downX
+                    lastY = downY
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!dragging) return false
+            }
+        }
+        return dragging
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lastX = e.rawX
+                lastY = e.rawY
+                dragging = true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                onMove(e.rawX - lastX, e.rawY - lastY)
+                lastX = e.rawX
+                lastY = e.rawY
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false
+        }
+        return true
     }
 
     // ---------- builders ----------
@@ -103,6 +166,7 @@ class ToolbarView(
         val r = LinearLayout(context)
         r.orientation = HORIZONTAL
         r.gravity = Gravity.CENTER
+        r.layoutParams = LayoutParams(d(widthDp), LayoutParams.WRAP_CONTENT)
         for (x in v) r.addView(x)
         return r
     }
@@ -111,23 +175,81 @@ class ToolbarView(
         val v = ImageView(context)
         v.setImageResource(res)
         v.contentDescription = desc
-        v.setPadding(d(11f), d(11f), d(11f), d(11f))
-        v.layoutParams = LayoutParams(d(46f), d(46f))
+        v.setPadding(d(5f), d(5f), d(5f), d(5f))
+        v.layoutParams = LayoutParams(d(btn), d(btn))
         v.setColorFilter(ink)
         v.setOnClickListener { click() }
         return v
     }
 
-    private fun buildHeroPanel(): View {
+    private fun swatch(c: Int, sizeDp: Float, marginDp: Float): View {
+        val dot = View(context)
+        val lp = LayoutParams(d(sizeDp), d(sizeDp))
+        lp.setMargins(d(marginDp), d(marginDp), d(marginDp), d(marginDp))
+        dot.layoutParams = lp
+        dot.setOnClickListener {
+            draw.color = c
+            refreshColors()
+        }
+        swatches.add(Pair(c, dot))
+        return dot
+    }
+
+    private fun buildSliderRow(): View {
         val r = LinearLayout(context)
         r.orientation = HORIZONTAL
-        r.gravity = Gravity.CENTER
-        r.setPadding(0, d(4f), 0, d(6f))
-        for (h in HeroCatalog.heroes) {
+        r.gravity = Gravity.CENTER_VERTICAL
+        r.layoutParams = LayoutParams(d(widthDp), d(btn))
+
+        r.addView(swatch(white, 18f, 3f))
+        r.addView(swatch(yellow, 18f, 3f))
+
+        seek.max = 100
+        seek.setPadding(d(10f), 0, d(10f), 0)
+        seek.progressTintList = ColorStateList.valueOf(ink)
+        seek.thumbTintList = ColorStateList.valueOf(ink)
+        seek.progressBackgroundTintList = ColorStateList.valueOf(0x33000000)
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                if (fromUser) draw.setProgress(p)
+            }
+
+            override fun onStartTrackingTouch(s: SeekBar?) {
+                sliding = true
+                draw.beginResize()
+                refreshTools()
+            }
+
+            override fun onStopTrackingTouch(s: SeekBar?) {
+                draw.endResize()
+                sliding = false
+                refreshTools()
+            }
+        })
+        r.addView(seek, LayoutParams(0, d(btn), 1f))
+        return r
+    }
+
+    private fun grid(columns: Int, cells: List<View>): LinearLayout {
+        val g = LinearLayout(context)
+        g.orientation = VERTICAL
+        g.gravity = Gravity.CENTER_HORIZONTAL
+        cells.chunked(columns).forEach { chunk ->
+            val r = LinearLayout(context)
+            r.orientation = HORIZONTAL
+            r.gravity = Gravity.CENTER
+            chunk.forEach { r.addView(it) }
+            g.addView(r)
+        }
+        return g
+    }
+
+    private fun buildHeroPanel(): View {
+        val cells = HeroCatalog.heroes.map { h ->
             val cell = FrameLayout(context)
             cell.background = roundRect(0x14000000, d(12f).toFloat())
-            val lp = LayoutParams(d(46f), d(46f))
-            lp.setMargins(d(3f), 0, d(3f), 0)
+            val lp = LayoutParams(d(40f), d(40f))
+            lp.setMargins(d(3f), d(3f), d(3f), d(3f))
             cell.layoutParams = lp
             val bmp = HeroCatalog.load(context, h)
             if (bmp != null) {
@@ -141,7 +263,7 @@ class ToolbarView(
                 tv.text = h.code.uppercase()
                 tv.gravity = Gravity.CENTER
                 tv.setTextColor(ink)
-                tv.textSize = 13f
+                tv.textSize = 12f
                 tv.typeface = Typeface.DEFAULT_BOLD
                 cell.addView(tv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             }
@@ -150,74 +272,30 @@ class ToolbarView(
                 draw.addHero(h)
                 setPanel(Panel.NONE)
             }
-            r.addView(cell)
+            cell
         }
-        r.visibility = View.GONE
-        panelHost.addView(r)
-        return r
+        val g = grid(3, cells)
+        g.setPadding(0, d(4f), 0, d(4f))
+        g.visibility = View.GONE
+        panelHost.addView(g, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        return g
     }
 
     private fun buildColorPanel(): View {
-        val r = LinearLayout(context)
-        r.orientation = HORIZONTAL
-        r.gravity = Gravity.CENTER
-        r.setPadding(0, d(6f), 0, d(8f))
-        for (c in colors) {
-            val dot = View(context)
-            val lp = LayoutParams(d(30f), d(30f))
-            lp.setMargins(d(4f), 0, d(4f), 0)
-            dot.layoutParams = lp
-            dot.setOnClickListener {
-                draw.color = c
-                refreshColors()
-            }
-            colorDots.add(Pair(c, dot))
-            r.addView(dot)
-        }
-        r.visibility = View.GONE
-        panelHost.addView(r)
-        return r
-    }
-
-    private fun buildSizePanel(): View {
-        val r = LinearLayout(context)
-        r.orientation = HORIZONTAL
-        r.gravity = Gravity.CENTER_VERTICAL
-        r.setPadding(d(6f), d(4f), d(6f), d(6f))
-        sizeLabel.textSize = 12f
-        sizeLabel.setTextColor(ink)
-        seek.max = 100
-        seek.progressTintList = ColorStateList.valueOf(ink)
-        seek.thumbTintList = ColorStateList.valueOf(ink)
-        seek.progressBackgroundTintList = ColorStateList.valueOf(0x33000000)
-        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    draw.setProgress(p)
-                    updateLabel()
-                }
-            }
-
-            override fun onStartTrackingTouch(s: SeekBar?) {
-                draw.beginResize()
-            }
-
-            override fun onStopTrackingTouch(s: SeekBar?) {
-                draw.endResize()
-            }
-        })
-        r.addView(sizeLabel, LayoutParams(d(92f), LayoutParams.WRAP_CONTENT))
-        r.addView(seek, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        r.visibility = View.GONE
-        panelHost.addView(r)
-        return r
+        val g = grid(4, palette.map { swatch(it, 26f, 4f) })
+        g.setPadding(0, d(4f), 0, d(4f))
+        g.visibility = View.GONE
+        panelHost.addView(g, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        return g
     }
 
     // ---------- state ----------
 
     private fun setTool(t: DrawView.Tool) {
         draw.tool = t
+        if (t != DrawView.Tool.SELECT) draw.selected = null
         refreshTools()
+        syncSlider()
     }
 
     private fun togglePanel(p: Panel) {
@@ -228,9 +306,7 @@ class ToolbarView(
         panel = p
         heroPanel.visibility = if (p == Panel.HERO) View.VISIBLE else View.GONE
         colorPanel.visibility = if (p == Panel.COLOR) View.VISIBLE else View.GONE
-        sizePanel.visibility = if (p == Panel.SIZE) View.VISIBLE else View.GONE
         refreshTools()
-        if (p == Panel.SIZE) syncSlider()
     }
 
     private fun style(v: ImageView, on: Boolean) {
@@ -242,10 +318,13 @@ class ToolbarView(
         style(btnPen, draw.tool == DrawView.Tool.PEN)
         style(btnArrow, draw.tool == DrawView.Tool.ARROW)
         style(btnSelect, draw.tool == DrawView.Tool.SELECT)
-        style(btnHero, panel == Panel.HERO)
         style(btnColor, panel == Panel.COLOR)
-        style(btnSize, panel == Panel.SIZE)
-        draw.showSelection = draw.tool == DrawView.Tool.SELECT || panel == Panel.SIZE
+        if (aqIcon != null) {
+            btnHero.background = oval(if (panel == Panel.HERO) ink else 0x1A000000)
+        } else {
+            style(btnHero, panel == Panel.HERO)
+        }
+        draw.showSelection = draw.tool == DrawView.Tool.SELECT || sliding
     }
 
     private fun refreshHistory() {
@@ -254,23 +333,13 @@ class ToolbarView(
     }
 
     private fun refreshColors() {
-        for ((c, dot) in colorDots) {
+        for ((c, dot) in swatches) {
             val selected = c == draw.color
-            dot.background = oval(c, if (selected) ink else 0x33000000, if (selected) d(3f) else 1)
+            dot.background = oval(c, if (selected) ink else 0x33000000, if (selected) d(2f) else 1)
         }
     }
 
     private fun syncSlider() {
-        seek.progress = draw.currentProgress()
-        updateLabel()
-    }
-
-    private fun updateLabel() {
-        val s = draw.selected
-        sizeLabel.text = when (s) {
-            is HeroItem -> "Hero ${(s.size * 100f).roundToInt()}%"
-            null -> "Garis baru"
-            else -> "Garis ${(s.size / context.resources.displayMetrics.density).roundToInt()} dp"
-        }
+        if (!sliding) seek.progress = draw.currentProgress()
     }
 }
