@@ -64,6 +64,20 @@ class OverlayService : Service() {
     private var tbY = 0f
     private var tbPlaced = false
 
+    // Posisi bubble disimpan sebagai sisi + pecahan tinggi, supaya tetap di tepi layar saat HP diputar.
+    private var bubbleRight = true
+    private var bubbleFracY = 1f / 3f
+    private var lastW = 0
+    private var lastH = 0
+
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) {}
+        override fun onDisplayRemoved(displayId: Int) {}
+        override fun onDisplayChanged(displayId: Int) {
+            handler.post { checkScreen() }
+        }
+    }
+
     private var projection: MediaProjection? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -77,6 +91,7 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, handler)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -110,6 +125,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
         exitDraw()
         bubble?.let { safeRemove(it) }
         bubble = null
@@ -120,7 +136,43 @@ class OverlayService : Service() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (projection != null) handler.postDelayed({ resizeCapture() }, 400)
+        // Ukuran layar kadang baru terbaca benar sesaat setelah rotasi, jadi dicek dua kali.
+        handler.postDelayed({ checkScreen() }, 300)
+        handler.postDelayed({ checkScreen() }, 900)
+    }
+
+    /** Dipanggil saat ukuran layar berubah (rotasi): bubble, toolbar, dan area tangkap layar disesuaikan. */
+    private fun checkScreen() {
+        val (w, h) = realSize()
+        if (w == lastW && h == lastH) return
+        lastW = w
+        lastH = h
+        placeBubble()
+        val tb = toolbar
+        val tlp = toolbarLp
+        if (tb != null && tlp != null) {
+            clampToolbar(tb)
+            tlp.x = tbX.toInt()
+            tlp.y = tbY.toInt()
+            try {
+                wm.updateViewLayout(tb, tlp)
+            } catch (e: Exception) {
+            }
+        }
+        if (projection != null) resizeCapture()
+    }
+
+    private fun placeBubble() {
+        val v = bubble ?: return
+        val lp = bubbleLp ?: return
+        val (sw, sh) = realSize()
+        val size = lp.width
+        lp.x = if (bubbleRight) (sw - size).coerceAtLeast(0) else 0
+        lp.y = (bubbleFracY * (sh - size)).toInt().coerceIn(0, (sh - size).coerceAtLeast(0))
+        try {
+            wm.updateViewLayout(v, lp)
+        } catch (e: Exception) {
+        }
     }
 
     // ---------- notifikasi ----------
@@ -173,15 +225,20 @@ class OverlayService : Service() {
         iv.setImageBitmap(HeroCatalog.bubbleBitmap(this, size - 2 * pad))
         iv.alpha = 0.95f
         val (sw, sh) = realSize()
+        lastW = sw
+        lastH = sh
+        // Layar penuh + cutout short edges: koordinat x/y sama dengan koordinat layar fisik,
+        // jadi tepi kanan di lanskap tidak tergeser oleh poni kamera atau bar navigasi.
         val lp = LayoutParams(
             size, size,
             LayoutParams.TYPE_APPLICATION_OVERLAY,
-            LayoutParams.FLAG_NOT_FOCUSABLE or LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            LayoutParams.FLAG_NOT_FOCUSABLE or LayoutParams.FLAG_LAYOUT_IN_SCREEN or LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
+        lp.layoutInDisplayCutoutMode = LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         lp.gravity = Gravity.TOP or Gravity.START
-        lp.x = sw - size
-        lp.y = sh / 3
+        lp.x = if (bubbleRight) sw - size else 0
+        lp.y = (bubbleFracY * (sh - size)).toInt()
 
         iv.setOnTouchListener(object : View.OnTouchListener {
             var downX = 0f
@@ -204,8 +261,9 @@ class OverlayService : Service() {
                         val dy = e.rawY - downY
                         if (!moved && hypot(dx, dy) > dpf(6f)) moved = true
                         if (moved) {
-                            lp.x = (startX + dx).toInt()
-                            lp.y = (startY + dy).toInt()
+                            val (cw, ch) = realSize()
+                            lp.x = (startX + dx).toInt().coerceIn(0, (cw - size).coerceAtLeast(0))
+                            lp.y = (startY + dy).toInt().coerceIn(0, (ch - size).coerceAtLeast(0))
                             wm.updateViewLayout(v, lp)
                         }
                     }
@@ -222,8 +280,10 @@ class OverlayService : Service() {
     }
 
     private fun snapBubble(v: View, lp: LayoutParams, size: Int) {
-        val (sw, _) = realSize()
-        val target = if (lp.x + size / 2 < sw / 2) 0 else sw - size
+        val (sw, sh) = realSize()
+        bubbleRight = lp.x + size / 2 >= sw / 2
+        bubbleFracY = if (sh > size) (lp.y.toFloat() / (sh - size)).coerceIn(0f, 1f) else 0f
+        val target = if (bubbleRight) (sw - size).coerceAtLeast(0) else 0
         val anim = ValueAnimator.ofInt(lp.x, target)
         anim.duration = 180
         anim.addUpdateListener {
@@ -267,6 +327,7 @@ class OverlayService : Service() {
             LayoutParams.FLAG_NOT_FOCUSABLE or LayoutParams.FLAG_LAYOUT_IN_SCREEN or LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
+        tlp.layoutInDisplayCutoutMode = LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         tlp.gravity = Gravity.TOP or Gravity.START
         tbPlaced = false
         tb.addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->

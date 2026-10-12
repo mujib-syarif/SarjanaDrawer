@@ -14,6 +14,12 @@ class DrawView(ctx: Context) : View(ctx) {
 
     enum class Tool { PEN, ARROW, SELECT }
 
+    private companion object {
+        // Skala hero relatif terhadap lebar dasar 120dp. Default 0.5 = 60dp.
+        const val HERO_MIN = 0.15f
+        const val HERO_MAX = 3f
+    }
+
     var onSelectionChanged: ((Item?) -> Unit)? = null
     var onHistoryChanged: (() -> Unit)? = null
     var onToolChanged: (() -> Unit)? = null
@@ -26,7 +32,7 @@ class DrawView(ctx: Context) : View(ctx) {
     var color: Int = 0xFFFFFFFF.toInt()
     var penWidth: Float = ctx.dpf(5f)
     var arrowWidth: Float = ctx.dpf(5f)
-    var heroScale: Float = 1f
+    var heroScale: Float = 0.5f
 
     var selected: Item? = null
         set(value) {
@@ -186,13 +192,13 @@ class DrawView(ctx: Context) : View(ctx) {
     // ---------- ukuran (slider) ----------
 
     private fun toSize(item: Item?, p: Int): Float =
-        if (item is HeroItem) 0.3f + p / 100f * 2.7f
+        if (item is HeroItem) HERO_MIN + p / 100f * (HERO_MAX - HERO_MIN)
         else context.dpf(2f) + p / 100f * context.dpf(38f)
 
     fun currentProgress(): Int {
         val s = selected
         val v = when {
-            s is HeroItem -> (s.size - 0.3f) / 2.7f * 100f
+            s is HeroItem -> (s.size - HERO_MIN) / (HERO_MAX - HERO_MIN) * 100f
             s != null -> (s.size - context.dpf(2f)) / context.dpf(38f) * 100f
             else -> (penWidth - context.dpf(2f)) / context.dpf(38f) * 100f
         }
