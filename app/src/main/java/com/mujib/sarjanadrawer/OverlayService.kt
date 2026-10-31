@@ -472,7 +472,11 @@ class OverlayService : Service() {
 
     private fun captureScreenshot() {
         if (projection == null) {
-            toast("Izin rekam layar belum diberikan. Matikan lalu aktifkan lagi dari aplikasi.")
+            val request = Intent(this, MainActivity::class.java).apply {
+                action = MainActivity.ACTION_REQUEST_CAPTURE
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(request)
             return
         }
         val tb = toolbar
