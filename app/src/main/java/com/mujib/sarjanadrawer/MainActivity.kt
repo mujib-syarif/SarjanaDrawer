@@ -156,9 +156,9 @@ class MainActivity : Activity() {
 
         if (!hasLogo || missing.isNotEmpty()) {
             val note = card()
-            val sb = StringBuilder("Belum ada di folder assets:\\n")
-            if (!hasLogo) sb.append("- ${HeroCatalog.LOGO}\\n")
-            missing.forEach { sb.append("- heroes/${it.fileName}\\n") }
+            val sb = StringBuilder("Belum ada di folder assets:\n")
+            if (!hasLogo) sb.append("- ${HeroCatalog.LOGO}\n")
+            missing.forEach { sb.append("- heroes/${it.fileName}\n") }
             note.addView(label(sb.toString().trim(), 12f, c(R.color.ink2)))
             val nl = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             nl.setMargins(0, dp(5f), 0, dp(5f))
