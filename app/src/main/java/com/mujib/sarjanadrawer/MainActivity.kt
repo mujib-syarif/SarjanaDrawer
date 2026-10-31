@@ -24,9 +24,28 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_CAPTURE = 1001
         private const val REQ_NOTIF = 1002
+        const val ACTION_REQUEST_CAPTURE = "com.mujib.sarjanadrawer.REQUEST_CAPTURE"
     }
 
     private val ui = Handler(Looper.getMainLooper())
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleIntentAction(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntentAction(intent)
+    }
+
+    private fun handleIntentAction(intent: Intent?) {
+        if (intent?.action == ACTION_REQUEST_CAPTURE) {
+            intent.action = null
+            requestCapture()
+        }
+    }
 
     override fun onResume() {
         super.onResume()
@@ -92,13 +111,11 @@ class MainActivity : Activity() {
         sub.setPadding(0, 0, 0, dp(14f))
         col.addView(sub)
 
-        // Baris 1: status bubble + tema
         col.addView(rowOf(
             tile("Bubble", if (running) "Aktif" else "Mati"),
             tile("Tema", "iOS")
         ))
 
-        // Baris 2: hero + logo
         val logoTile = card()
         val logoImg = ImageView(this)
         logoImg.setImageBitmap(HeroCatalog.bubbleBitmap(this, dp(44f)))
@@ -109,7 +126,6 @@ class MainActivity : Activity() {
             logoTile
         ))
 
-        // Baris 3: izin
         col.addView(rowOf(
             tile("Izin tampil di atas app", if (overlayOk) "Aktif" else "Belum") {
                 startActivity(
@@ -119,7 +135,6 @@ class MainActivity : Activity() {
             tile("Screenshot tersimpan", Stats.get(this, Stats.SHOTS).toString())
         ))
 
-        // Baris 4: statistik (data-driven)
         val stats = card()
         val srow = LinearLayout(this)
         srow.orientation = LinearLayout.HORIZONTAL
@@ -139,19 +154,17 @@ class MainActivity : Activity() {
         sl.setMargins(0, dp(5f), 0, dp(5f))
         col.addView(stats, sl)
 
-        // Catatan file yang belum ada
         if (!hasLogo || missing.isNotEmpty()) {
             val note = card()
-            val sb = StringBuilder("Belum ada di folder assets:\n")
-            if (!hasLogo) sb.append("- ${HeroCatalog.LOGO}\n")
-            missing.forEach { sb.append("- heroes/${it.fileName}\n") }
+            val sb = StringBuilder("Belum ada di folder assets:\\n")
+            if (!hasLogo) sb.append("- ${HeroCatalog.LOGO}\\n")
+            missing.forEach { sb.append("- heroes/${it.fileName}\\n") }
             note.addView(label(sb.toString().trim(), 12f, c(R.color.ink2)))
             val nl = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             nl.setMargins(0, dp(5f), 0, dp(5f))
             col.addView(note, nl)
         }
 
-        // Tombol utama
         val btn = label(if (running) "Matikan bubble" else "Aktifkan bubble", 17f, c(R.color.bg), true)
         btn.gravity = Gravity.CENTER
         btn.background = roundRect(c(R.color.ink), dpf(28f))
@@ -160,7 +173,7 @@ class MainActivity : Activity() {
         bl.setMargins(0, dp(16f), 0, dp(8f))
         col.addView(btn, bl)
 
-        col.addView(label("Setelah aktif, sentuh bubble untuk mulai mencoret. Geser toolbar lewat garis kecil di atasnya.", 12f, c(R.color.ink2)))
+        col.addView(label("Setelah aktif, sentuh bubble untuk mulai mencoret. Izin screenshot hanya diminta saat tombol screenshot digunakan.", 12f, c(R.color.ink2)))
         return scroll
     }
 
@@ -178,12 +191,17 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
             return
         }
-        requestCapture()
+        startOverlay()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_NOTIF) requestCapture()
+        if (requestCode == REQ_NOTIF) startOverlay()
+    }
+
+    private fun startOverlay() {
+        startForegroundService(Intent(this, OverlayService::class.java))
+        moveTaskToBack(true)
     }
 
     private fun requestCapture() {
@@ -196,15 +214,17 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQ_CAPTURE) return
-        val intent = Intent(this, OverlayService::class.java)
         if (resultCode == RESULT_OK && data != null) {
-            intent.putExtra(OverlayService.EXTRA_CODE, resultCode)
-            intent.putExtra(OverlayService.EXTRA_DATA, data)
+            val serviceIntent = Intent(this, OverlayService::class.java).apply {
+                putExtra(OverlayService.EXTRA_CODE, resultCode)
+                putExtra(OverlayService.EXTRA_DATA, data)
+            }
+            startService(serviceIntent)
+            moveTaskToBack(true)
         } else {
-            Toast.makeText(this, "Tanpa izin rekam layar, tombol screenshot tidak aktif.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Izin screenshot tidak diberikan. Fitur coret layar tetap aktif.", Toast.LENGTH_LONG).show()
+            setContentView(buildUi())
         }
-        startForegroundService(intent)
-        moveTaskToBack(true)
     }
 
     private fun deactivate() {
