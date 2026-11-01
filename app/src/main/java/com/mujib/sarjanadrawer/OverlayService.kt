@@ -110,12 +110,18 @@ class OverlayService : Service() {
 
         createChannel()
         val notification = buildNotification()
-        if (hasCapture) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        } else if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIF_ID, notification)
+        try {
+            if (hasCapture) {
+                startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIF_ID, notification)
+            }
+        } catch (e: Exception) {
+            // Mis. izin dicabut atau Android menolak tipe foreground service.
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         if (hasCapture && projection == null) setupProjection(code, data!!)
@@ -125,6 +131,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
         exitDraw()
         bubble?.let { safeRemove(it) }
@@ -274,7 +281,13 @@ class OverlayService : Service() {
                 return true
             }
         })
-        wm.addView(iv, lp)
+        try {
+            wm.addView(iv, lp)
+        } catch (e: Exception) {
+            // Izin "tampil di atas aplikasi lain" dicabut: hentikan layanan, jangan crash.
+            stopSelf()
+            return
+        }
         bubble = iv
         bubbleLp = lp
     }
@@ -312,7 +325,12 @@ class OverlayService : Service() {
             PixelFormat.TRANSLUCENT
         )
         dlp.layoutInDisplayCutoutMode = LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        wm.addView(dv, dlp)
+        try {
+            wm.addView(dv, dlp)
+        } catch (e: Exception) {
+            toast("Tidak bisa membuka layar coret. Periksa izin tampil di atas aplikasi lain.")
+            return
+        }
         drawView = dv
 
         val tb = ToolbarView(
@@ -351,7 +369,14 @@ class OverlayService : Service() {
         }
         tlp.x = dp(12f)
         tlp.y = realSize().second / 2
-        wm.addView(tb, tlp)
+        try {
+            wm.addView(tb, tlp)
+        } catch (e: Exception) {
+            safeRemove(dv)
+            drawView = null
+            toast("Tidak bisa membuka toolbar. Periksa izin tampil di atas aplikasi lain.")
+            return
+        }
         toolbar = tb
         toolbarLp = tlp
 
