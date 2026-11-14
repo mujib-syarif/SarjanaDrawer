@@ -124,9 +124,25 @@ class OverlayService : Service() {
             return START_NOT_STICKY
         }
 
-        if (hasCapture && projection == null) setupProjection(code, data!!)
+        if (hasCapture && projection == null) {
+            try {
+                setupProjection(code, data!!)
+            } catch (e: SecurityException) {
+                return failProjection()
+            } catch (e: IllegalStateException) {
+                return failProjection()
+            }
+        }
         if (bubble == null) showBubble()
         running = true
+        return START_NOT_STICKY
+    }
+
+    /** Izin tangkap layar ditolak/kedaluwarsa: beri tahu pengguna dan hentikan layanan, jangan crash. */
+    private fun failProjection(): Int {
+        releaseProjection()
+        Toast.makeText(this, "Tidak bisa memulai tangkap layar. Aktifkan bubble lagi.", Toast.LENGTH_LONG).show()
+        stopSelf()
         return START_NOT_STICKY
     }
 
@@ -224,10 +240,11 @@ class OverlayService : Service() {
     }
 
     private fun showBubble() {
-        // Logo tampil 28dp; jendela 44dp supaya area sentuh tetap nyaman.
-        val size = dp(44f)
-        val pad = dp(8f)
+        // Logo tampil 28dp; jendela 48dp supaya area sentuh memenuhi minimum.
+        val size = dp(48f)
+        val pad = dp(10f)
         val iv = ImageView(this)
+        iv.contentDescription = "Sarjana Drawer: sentuh untuk mulai mencoret"
         iv.setPadding(pad, pad, pad, pad)
         iv.setImageBitmap(HeroCatalog.bubbleBitmap(this, size - 2 * pad))
         iv.alpha = 0.95f
@@ -271,7 +288,11 @@ class OverlayService : Service() {
                             val (cw, ch) = realSize()
                             lp.x = (startX + dx).toInt().coerceIn(0, (cw - size).coerceAtLeast(0))
                             lp.y = (startY + dy).toInt().coerceIn(0, (ch - size).coerceAtLeast(0))
-                            wm.updateViewLayout(v, lp)
+                            try {
+                                wm.updateViewLayout(v, lp)
+                            } catch (e: Exception) {
+                                // Jendela sudah dilepas (mis. izin overlay dicabut saat menyeret).
+                            }
                         }
                     }
                     MotionEvent.ACTION_UP -> {

@@ -36,9 +36,10 @@ class ToolbarView(
     private var panel = Panel.NONE
     private var sliding = false
 
-    private val btn = 28f
+    private val btn = 28f // ukuran gambar ikon
+    private val cell = 48f // area sentuh minimum per tombol
     private val cols = 5
-    private val widthDp = btn * cols
+    private val widthDp = cell * cols
 
     private fun d(v: Float): Int = context.dp(v)
 
@@ -167,8 +168,21 @@ class ToolbarView(
         r.orientation = HORIZONTAL
         r.gravity = Gravity.CENTER
         r.layoutParams = LayoutParams(d(widthDp), LayoutParams.WRAP_CONTENT)
-        for (x in v) r.addView(x)
+        for (x in v) r.addView(tapTarget(x))
         return r
+    }
+
+    /** Membungkus [v] dalam area sentuh 48dp tanpa mengubah ukuran gambar [v]. */
+    private fun tapTarget(v: View): View {
+        val box = FrameLayout(context)
+        box.layoutParams = LayoutParams(d(cell), d(cell))
+        val lp = v.layoutParams
+        box.addView(v, FrameLayout.LayoutParams(lp.width, lp.height, Gravity.CENTER))
+        box.contentDescription = v.contentDescription
+        box.setOnClickListener { v.performClick() }
+        // Pembungkus yang dibaca TalkBack; hindari simpul ganda.
+        v.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        return box
     }
 
     private fun icon(res: Int, desc: String, click: () -> Unit): ImageView {
@@ -182,27 +196,42 @@ class ToolbarView(
         return v
     }
 
-    private fun swatch(c: Int, sizeDp: Float, marginDp: Float): View {
+    /** Titik warna [sizeDp] di dalam area sentuh 48dp (ukuran titik tidak berubah). */
+    private fun swatch(c: Int, sizeDp: Float): View {
         val dot = View(context)
-        val lp = LayoutParams(d(sizeDp), d(sizeDp))
-        lp.setMargins(d(marginDp), d(marginDp), d(marginDp), d(marginDp))
-        dot.layoutParams = lp
-        dot.setOnClickListener {
+        dot.layoutParams = FrameLayout.LayoutParams(d(sizeDp), d(sizeDp), Gravity.CENTER)
+        val box = FrameLayout(context)
+        box.layoutParams = LayoutParams(d(cell), d(cell))
+        box.contentDescription = "Warna " + colorName(c)
+        box.setOnClickListener {
             draw.color = c
             refreshColors()
         }
+        box.addView(dot)
         swatches.add(Pair(c, dot))
-        return dot
+        return box
+    }
+
+    private fun colorName(c: Int): String = when (c) {
+        0xFFFFFFFF.toInt() -> "putih"
+        0xFFFFCC00.toInt() -> "kuning"
+        0xFFFF9500.toInt() -> "oranye"
+        0xFFFF3B30.toInt() -> "merah"
+        0xFF34C759.toInt() -> "hijau"
+        0xFF0A84FF.toInt() -> "biru"
+        0xFFAF52DE.toInt() -> "ungu"
+        0xFF1C1C1E.toInt() -> "hitam"
+        else -> "kustom"
     }
 
     private fun buildSliderRow(): View {
         val r = LinearLayout(context)
         r.orientation = HORIZONTAL
         r.gravity = Gravity.CENTER_VERTICAL
-        r.layoutParams = LayoutParams(d(widthDp), d(btn))
+        r.layoutParams = LayoutParams(d(widthDp), d(cell))
 
-        r.addView(swatch(white, 18f, 3f))
-        r.addView(swatch(yellow, 18f, 3f))
+        r.addView(swatch(white, 18f))
+        r.addView(swatch(yellow, 18f))
 
         seek.max = 100
         seek.setPadding(d(10f), 0, d(10f), 0)
@@ -226,7 +255,7 @@ class ToolbarView(
                 refreshTools()
             }
         })
-        r.addView(seek, LayoutParams(0, d(btn), 1f))
+        r.addView(seek, LayoutParams(0, d(cell), 1f))
         return r
     }
 
@@ -282,7 +311,7 @@ class ToolbarView(
     }
 
     private fun buildColorPanel(): View {
-        val g = grid(4, palette.map { swatch(it, 26f, 4f) })
+        val g = grid(4, palette.map { swatch(it, 26f) })
         g.setPadding(0, d(4f), 0, d(4f))
         g.visibility = View.GONE
         panelHost.addView(g, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
