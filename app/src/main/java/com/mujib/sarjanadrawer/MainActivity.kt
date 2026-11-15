@@ -28,6 +28,8 @@ class MainActivity : Activity() {
     }
 
     private val ui = Handler(Looper.getMainLooper())
+    // Tanda keadaan yang terakhir digambar; onResume hanya membangun ulang UI bila berubah.
+    private var lastSignature: String? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,8 +51,22 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        setContentView(buildUi())
+        if (uiSignature() != lastSignature) setContentView(buildUi())
     }
+
+    override fun onDestroy() {
+        ui.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+
+    /** Semua masukan buildUi() yang bisa berubah; aset hero/logo bersifat tetap. */
+    private fun uiSignature(): String = listOf(
+        Settings.canDrawOverlays(this),
+        OverlayService.running,
+        Stats.get(this, Stats.STROKES),
+        Stats.get(this, Stats.HEROES),
+        Stats.get(this, Stats.SHOTS)
+    ).joinToString("|")
 
     // ---------- UI (iOS, monokrom, kartu modular) ----------
 
@@ -93,6 +109,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi(): View {
+        lastSignature = uiSignature()
         val overlayOk = Settings.canDrawOverlays(this)
         val readyHeroes = HeroCatalog.heroes.count { HeroCatalog.isAvailable(this, it) }
         val missing = HeroCatalog.heroes.filter { !HeroCatalog.isAvailable(this, it) }
